@@ -9,6 +9,7 @@ from src.core.calculations import calculate_metrics
 from src.ui.styling import apply_custom_styling
 from src.ui.charts import create_payoff_diagram, create_radar_chart
 from src.utils.helpers import color_code_dataframe
+from src.data.data_provider import DataProvider
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(
@@ -31,14 +32,10 @@ if 'comparison_list' not in st.session_state:
 
 # --- CARICAMENTO E CACHING DATI ---
 @st.cache_data(show_spinner="Caricamento dati di mercato...")
-def load_data(tickers):
-    price_map = {}
-    for ticker in tickers:
-        price, hv_20 = get_stock_data(ticker)
-        if price is not None and hv_20 is not None:
-            price_map[ticker] = {'price': price, 'hv_20': hv_20}
-    
-    return generate_mock_data(tickers, price_map)
+def load_data(tickers, data_source):
+    """Carica i dati usando il DataProvider"""
+    provider = DataProvider(data_source=data_source)
+    return provider.get_options_data(tickers)
 
 # --- FUNZIONI DI CALLBACK ---
 def handle_details_selection():
@@ -85,6 +82,15 @@ with st.sidebar:
     available_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "SPY", "QQQ", "JPM", "V"]
     selected_tickers = st.multiselect("Seleziona Tickers", available_tickers, default=["AAPL", "MSFT", "TSLA"])
 
+    st.header("📊 Fonte Dati")
+    data_source = st.radio(
+        "Scegli fonte dati:",
+        options=['real', 'mock'],
+        format_func=lambda x: 'Dati Reali (yfinance)' if x == 'real' else 'Dati Simulati (Mock)',
+        index=0,
+        help="Dati Reali: usa le option chain di yfinance\nDati Simulati: usa dati generati per test"
+    )
+    
     st.header("Filtri")
     min_yield = st.slider("Premium Yield Min %", 0.0, 5.0, 0.5, 0.1)
     max_dte = st.slider("Max DTE", 15, 60, 35, 1)
@@ -100,10 +106,15 @@ if not selected_tickers:
     st.warning("Per favore, seleziona almeno un ticker dalla sidebar.")
     st.stop()
 
-mock_data = load_data(selected_tickers)
+options_data = load_data(selected_tickers, data_source)
+
+if not options_data:
+    st.error("Nessun dato disponibile per i ticker selezionati. Verifica la connessione o prova con dati simulati.")
+    st.stop()
+    
 all_options = []
 
-for ticker, data in mock_data.items():
+for ticker, data in options_data.items():
     underlying_price = data['underlying_price']
     hv_20 = data['hv_20']
     for option in data['options']:
