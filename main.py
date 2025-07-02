@@ -24,6 +24,8 @@ st.markdown(apply_custom_styling(), unsafe_allow_html=True)
 # --- STATO DELL'APPLICAZIONE ---
 if 'selected_option' not in st.session_state:
     st.session_state.selected_option = None
+if 'selected_option_index' not in st.session_state:
+    st.session_state.selected_option_index = None
 if 'comparison_list' not in st.session_state:
     st.session_state.comparison_list = []
 
@@ -38,10 +40,24 @@ def load_data(tickers):
     
     return generate_mock_data(tickers, price_map)
 
-# --- FUNZIONE DI CALLBACK ---
-def update_comparison_list():
+# --- FUNZIONI DI CALLBACK ---
+def handle_details_selection():
     """
-    Aggiorna la lista di opzioni da confrontare in base alle checkbox spuntate.
+    Gestisce la selezione per l'analisi dettagliata tramite pulsante.
+    """
+    edited_rows = st.session_state.main_table.get('edited_rows', {})
+    
+    for row_index, changes in edited_rows.items():
+        # Verifica se il pulsante "Dettagli" è stato cliccato
+        if changes.get('Dettagli', None) == True:
+            st.session_state.selected_option_index = row_index
+            # Reset del pulsante per evitare loop
+            st.session_state.main_table['edited_rows'][row_index]['Dettagli'] = False
+            break
+
+def handle_comparison_selection():
+    """
+    Gestisce la selezione per il confronto tramite checkbox.
     """
     edited_rows = st.session_state.main_table.get('edited_rows', {})
     current_list = st.session_state.get('comparison_list', [])
@@ -54,6 +70,13 @@ def update_comparison_list():
             current_list.remove(row_index)
     
     st.session_state.comparison_list = sorted(current_list)
+
+def update_table_state():
+    """
+    Callback unificato per aggiornare lo stato della tabella.
+    """
+    handle_details_selection()
+    handle_comparison_selection()
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -114,107 +137,205 @@ tab1, tab2, tab3 = st.tabs(["Panoramica 📈", "Analisi Dettagliata 🔬", "Conf
 with tab1:
     st.header("Panoramica Opzioni filtrate")
 
+    # Preparazione colonne per la visualizzazione
     display_cols = ['Ticker', 'Strike', 'DTE', 'Premium', 'Premium Yield %', 'AS', 'POP %', 'Moneyness %']
     df_display = df[display_cols].copy()
     
-    df_display.insert(0, 'Confronta', False)
+    # Aggiunta colonne di controllo
+    df_display.insert(0, 'Dettagli', False)  # Pulsante per analisi dettagliata
+    df_display.insert(1, 'Confronta', False)  # Checkbox per confronto
+    
+    # Ripristino stato checkbox confronto
     for index in st.session_state.comparison_list:
         if index in df_display.index:
             df_display.loc[index, 'Confronta'] = True
 
+    # Visualizzazione tabella interattiva
     edited_df = st.data_editor(
         color_code_dataframe(df_display, ['Premium Yield %', 'AS', 'POP %']),
         hide_index=True,
         use_container_width=True,
         key="main_table",
-        on_change=update_comparison_list
+        on_change=update_table_state,
+        column_config={
+            "Dettagli": st.column_config.CheckboxColumn(
+                "🔍",
+                help="Clicca per visualizzare i dettagli",
+                default=False,
+                width="small"
+            ),
+            "Confronta": st.column_config.CheckboxColumn(
+                "⚖️",
+                help="Spunta per aggiungere al confronto",
+                default=False,
+                width="small"
+            ),
+            "Premium Yield %": st.column_config.NumberColumn(
+                "Premium Yield %",
+                help="Rendimento del premio",
+                format="%.2f%%"
+            ),
+            "AS": st.column_config.NumberColumn(
+                "AS",
+                help="Assignment Score",
+                format="%.4f"
+            ),
+            "POP %": st.column_config.NumberColumn(
+                "POP %",
+                help="Probability of Profit",
+                format="%.1f%%"
+            ),
+            "Moneyness %": st.column_config.NumberColumn(
+                "Moneyness %",
+                help="Percentuale di moneyness",
+                format="%.1f%%"
+            )
+        }
     )
 
-    st.info("💡 **Per i dettagli**: Clicca su una riga O spunta la casella 'Confronta'.")
+    # Informazioni di utilizzo
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info("🔍 **Per i dettagli**: Clicca sulla casella nella colonna 'Dettagli'")
+    with col2:
+        st.info("⚖️ **Per il confronto**: Spunta le caselle nella colonna 'Confronta'")
 
-    # --- NUOVA LOGICA DI SELEZIONE UNIFICATA ---
-    selected_index = None
+    # Aggiornamento opzione selezionata per i dettagli
+    if st.session_state.selected_option_index is not None and st.session_state.selected_option_index < len(df):
+        st.session_state.selected_option = df.iloc[st.session_state.selected_option_index]
 
-    # Caso 1: L'utente ha interagito con una checkbox.
-    edited_rows = st.session_state.main_table.get('edited_rows', {})
-    if edited_rows:
-        last_edited_index = list(edited_rows.keys())[-1]
-        # Se la casella è stata SPUNTATA, seleziona la riga per i dettagli.
-        if edited_rows[last_edited_index].get('Confronta') is True:
-            selected_index = last_edited_index
+    # Mostra stato attuale
+    if st.session_state.selected_option is not None:
+        st.success(f"✅ **Selezionata per dettagli**: {st.session_state.selected_option['Ticker']} - Strike ${st.session_state.selected_option['Strike']:.2f}")
     
-    # Caso 2: L'utente ha cliccato direttamente su una riga. Questa azione ha la priorità.
-    if 'selection' in st.session_state.main_table and st.session_state.main_table['selection']['rows']:
-        selected_index = st.session_state.main_table['selection']['rows'][0]
-
-    # Aggiorna l'opzione per la vista dettagliata se un indice è stato selezionato.
-    if selected_index is not None and selected_index < len(df):
-        st.session_state.selected_option = df.iloc[selected_index]
-    # Se l'ultima azione è stata deselezionare tutto, svuota i dettagli.
-    elif not st.session_state.comparison_list:
-        st.session_state.selected_option = None
-    # --- FINE LOGICA DI SELEZIONE ---
-
+    if st.session_state.comparison_list:
+        comparison_tickers = [df.iloc[i]['Ticker'] + f" ${df.iloc[i]['Strike']:.2f}" for i in st.session_state.comparison_list]
+        st.success(f"✅ **In confronto**: {', '.join(comparison_tickers)}")
 
 # --- TAB 2: ANALISI DETTAGLIATA ---
 with tab2:
     if st.session_state.selected_option is None:
-        st.info("Seleziona un'opzione dalla tabella 'Panoramica' per visualizzare i dettagli.")
+        st.info("🔍 Seleziona un'opzione dalla tabella 'Panoramica' cliccando sulla colonna 'Dettagli' per visualizzare l'analisi completa.")
+        
+        # Pulsante per tornare alla panoramica
+        if st.button("📈 Vai alla Panoramica", type="primary"):
+            st.switch_page("main.py")
     else:
         opt = st.session_state.selected_option
-        st.header(f"Analisi per {opt['Ticker']} - Strike ${opt['Strike']:.2f}")
-        st.subheader(f"Scadenza: {opt['DTE']} giorni | Sottostante: ${float(opt['Sottostante'].replace('$', '')):.2f}")
+        
+        # Header con informazioni principali
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            st.header(f"📊 Analisi {opt['Ticker']} - Strike ${opt['Strike']:.2f}")
+        with col2:
+            if st.button("🔄 Aggiorna Selezione", help="Torna alla panoramica per selezionare un'altra opzione"):
+                st.session_state.selected_option = None
+                st.session_state.selected_option_index = None
+                st.rerun()
+        with col3:
+            if st.button("⚖️ Aggiungi al Confronto", help="Aggiungi questa opzione al confronto"):
+                if st.session_state.selected_option_index not in st.session_state.comparison_list:
+                    st.session_state.comparison_list.append(st.session_state.selected_option_index)
+                    st.success("Aggiunta al confronto!")
+                else:
+                    st.info("Già presente nel confronto")
+
+        st.subheader(f"📅 Scadenza: {opt['DTE']} giorni | 💰 Sottostante: ${float(opt['Sottostante'].replace('$', '')):.2f}")
 
         st.markdown("---")
-        cols = st.columns(4)
-        metric_items = {
-            "Premium Yield": f"{opt['Premium Yield %']}%",
-            "Assignment Score": f"{opt['AS']:.4f}",
-            "Prob. of Profit": f"{opt['POP %']}%",
-            "Return on Risk": f"{opt['Return on Risk %']}%",
-            "Breakeven": f"${opt['Breakeven']:.2f}",
-            "Theta Daily Decay": f"${opt['Theta Daily']:.3f}",
-            "IV": f"{opt['IV']:.1%}",
-            "Moneyness": f"{opt['Moneyness %']}%"
-        }
         
-        for i, (label, value) in enumerate(metric_items.items()):
+        # Metriche principali in grid
+        cols = st.columns(4)
+        metric_items = [
+            ("Premium Yield", f"{opt['Premium Yield %']}%", "💰"),
+            ("Assignment Score", f"{opt['AS']:.4f}", "📊"),
+            ("Prob. of Profit", f"{opt['POP %']}%", "🎯"),
+            ("Return on Risk", f"{opt['Return on Risk %']}%", "⚡"),
+            ("Breakeven", f"${opt['Breakeven']:.2f}", "🔒"),
+            ("Theta Daily Decay", f"${opt['Theta Daily']:.3f}", "⏰"),
+            ("IV", f"{opt['IV']:.1%}", "📈"),
+            ("Moneyness", f"{opt['Moneyness %']}%", "💵")
+        ]
+        
+        for i, (label, value, icon) in enumerate(metric_items):
             with cols[i % 4]:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <h4>{label}</h4>
+                    <h4>{icon} {label}</h4>
                     <p>{value}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
         st.markdown("---")
+        
+        # Grafici e analisi del rischio
         chart_col, risk_col = st.columns([2, 1])
 
         with chart_col:
+            st.subheader("📊 Payoff Diagram")
             st.plotly_chart(create_payoff_diagram(opt['Strike'], opt['Premium'], float(opt['Sottostante'].replace('$', ''))), use_container_width=True)
 
         with risk_col:
-            st.subheader("Valutazione Rischio")
+            st.subheader("⚠️ Valutazione Rischio")
+            
+            # Analisi Assignment Score
             if opt['AS'] > df['AS'].quantile(0.75):
-                st.markdown('<span class="risk-badge">RISCHIO ASSEGN. ALTO</span>', unsafe_allow_html=True)
+                st.markdown('<span class="risk-badge">🔴 RISCHIO ASSEGN. ALTO</span>', unsafe_allow_html=True)
                 st.write("L'Assignment Score è nel quartile più alto, indicando un rischio di assegnazione elevato rispetto alle altre opzioni.")
             else:
-                 st.markdown('<span class="risk-badge ok-badge">RISCHIO ASSEGN. OK</span>', unsafe_allow_html=True)
+                st.markdown('<span class="risk-badge ok-badge">🟢 RISCHIO ASSEGN. OK</span>', unsafe_allow_html=True)
+                st.write("L'Assignment Score è nella norma.")
             
+            # Analisi Delta
             if abs(opt['delta']) > 0.45:
-                st.markdown('<span class="risk-badge">DELTA ELEVATO</span>', unsafe_allow_html=True)
+                st.markdown('<span class="risk-badge">🔴 DELTA ELEVATO</span>', unsafe_allow_html=True)
                 st.write("Il delta è alto, suggerendo una maggiore sensibilità al prezzo del sottostante e una più alta probabilità di finire ITM.")
             else:
-                st.markdown('<span class="risk-badge ok-badge">DELTA OK</span>', unsafe_allow_html=True)
+                st.markdown('<span class="risk-badge ok-badge">🟢 DELTA OK</span>', unsafe_allow_html=True)
+                st.write("Il delta è nella norma.")
             
+            # Analisi DTE
+            if opt['DTE'] < 21:
+                st.markdown('<span class="risk-badge">🟡 DTE BREVE</span>', unsafe_allow_html=True)
+                st.write("Il tempo alla scadenza è relativamente breve, aumentando l'effetto del time decay.")
+            else:
+                st.markdown('<span class="risk-badge ok-badge">🟢 DTE OK</span>', unsafe_allow_html=True)
+
 # --- TAB 3: CONFRONTO ---
 with tab3:
     if not st.session_state.comparison_list:
-        st.info("Seleziona due o più opzioni dalla tabella 'Panoramica' usando le checkbox per confrontarle.")
+        st.info("⚖️ Seleziona due o più opzioni dalla tabella 'Panoramica' usando le checkbox nella colonna 'Confronta' per visualizzare il confronto.")
+        
+        # Pulsante per tornare alla panoramica
+        if st.button("📈 Vai alla Panoramica per Selezionare", type="primary"):
+            st.switch_page("main.py")
     else:
         comparison_df = df.iloc[st.session_state.comparison_list]
-        st.header("Confronto tra Opzioni Selezionate")
         
+        # Header con controlli
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.header(f"⚖️ Confronto tra {len(st.session_state.comparison_list)} Opzioni Selezionate")
+        with col2:
+            if st.button("🗑️ Svuota Confronto", help="Rimuovi tutte le opzioni dal confronto"):
+                st.session_state.comparison_list = []
+                st.rerun()
+
+        # Lista opzioni in confronto
+        st.subheader("📋 Opzioni in Confronto:")
+        for i, idx in enumerate(st.session_state.comparison_list):
+            row = df.iloc[idx]
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"**{i+1}.** {row['Ticker']} - Strike ${row['Strike']:.2f} | DTE: {row['DTE']} | Yield: {row['Premium Yield %']:.2f}%")
+            with col2:
+                if st.button(f"❌", key=f"remove_{idx}", help="Rimuovi dal confronto"):
+                    st.session_state.comparison_list.remove(idx)
+                    st.rerun()
+
+        st.markdown("---")
+        
+        # Preparazione dati per radar chart
         radar_data = []
         for i, row in comparison_df.iterrows():
             as_inverted_normalized = 1 - (row['AS'] / df['AS'].max())
@@ -225,6 +346,7 @@ with tab3:
                 'AS (Invertito)': as_inverted_normalized * 100
             })
         
+        # Normalizzazione per radar chart
         if radar_data:
             max_yield = max(d['Premium Yield'] for d in radar_data) or 1
             max_pop = max(d['POP'] for d in radar_data) or 1
@@ -232,12 +354,46 @@ with tab3:
                 d['Premium Yield'] = (d['Premium Yield'] / max_yield) * 100
                 d['POP'] = (d['POP'] / max_pop) * 100
 
+        # Layout confronto
         col1, col2 = st.columns(2)
+        
         with col1:
-            st.subheader("Radar Chart Comparativo")
-            st.plotly_chart(create_radar_chart(radar_data), use_container_width=True)
+            st.subheader("🕸️ Radar Chart Comparativo")
+            if radar_data:
+                st.plotly_chart(create_radar_chart(radar_data), use_container_width=True)
+            else:
+                st.info("Nessun dato disponibile per il radar chart.")
         
         with col2:
-            st.subheader("Tabella di Confronto")
+            st.subheader("📊 Tabella di Confronto")
             display_cols_comp = ['Ticker', 'Strike', 'Premium Yield %', 'AS', 'POP %', 'Return on Risk %', 'Breakeven']
-            st.dataframe(comparison_df[display_cols_comp].set_index('Ticker'), use_container_width=True)
+            comparison_table = comparison_df[display_cols_comp].copy()
+            
+            # Evidenziazione valori migliori
+            st.dataframe(
+                comparison_table.style.highlight_max(subset=['Premium Yield %', 'POP %', 'Return on Risk %'], color='lightgreen')
+                                    .highlight_min(subset=['AS'], color='lightgreen'),
+                use_container_width=True
+            )
+
+        # Riassunto confronto
+        st.markdown("---")
+        st.subheader("📝 Riassunto Confronto")
+        
+        best_yield = comparison_df.loc[comparison_df['Premium Yield %'].idxmax()]
+        best_pop = comparison_df.loc[comparison_df['POP %'].idxmax()]
+        best_as = comparison_df.loc[comparison_df['AS'].idxmin()]  # Minore è meglio per AS
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🏆 Miglior Premium Yield", 
+                     f"{best_yield['Ticker']} ${best_yield['Strike']:.2f}", 
+                     f"{best_yield['Premium Yield %']:.2f}%")
+        with col2:
+            st.metric("🏆 Miglior POP", 
+                     f"{best_pop['Ticker']} ${best_pop['Strike']:.2f}", 
+                     f"{best_pop['POP %']:.1f}%")
+        with col3:
+            st.metric("🏆 Miglior AS (più basso)", 
+                     f"{best_as['Ticker']} ${best_as['Strike']:.2f}", 
+                     f"{best_as['AS']:.4f}")
