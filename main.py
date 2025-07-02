@@ -13,8 +13,8 @@ from src.data.data_provider import DataProvider
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(
-    page_title="Analizzatore Opzioni PUT - Strategia Wheel",
-    page_icon="🎯",
+    page_title="Visualizzatore Opzioni PUT",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -77,7 +77,7 @@ def update_table_state():
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("🎯 Analizzatore Wheel")
+    st.title("🎫 Parametri")
     
     ticker_mode = st.radio(
         "Modalità selezione ticker:",
@@ -165,7 +165,7 @@ if not all_options:
 df = pd.DataFrame(all_options).sort_values(by=sort_by, ascending=sort_ascending).reset_index(drop=True)
 
 # --- MAIN AREA ---
-st.title("Dashboard Opzioni PUT")
+st.title("Dashboard")
 st.markdown(f"Analisi per i tickers: **{', '.join(selected_tickers)}** | Dati aggiornati al: **{pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}**")
 
 tab1, tab2, tab3 = st.tabs(["Panoramica 📈", "Analisi Dettagliata 🔬", "Confronto ⚖️"])
