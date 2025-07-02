@@ -38,6 +38,26 @@ def load_data(tickers):
     
     return generate_mock_data(tickers, price_map)
 
+# --- FUNZIONE DI CALLBACK CORRETTA ---
+# CORREZIONE 2: Funzione robusta per aggiornare la lista di confronto
+def update_comparison_list():
+    """
+    Aggiorna la lista di opzioni da confrontare in base alle checkbox spuntate.
+    Questa funzione gestisce correttamente aggiunte e rimozioni multiple.
+    """
+    edited_rows = st.session_state.main_table.get('edited_rows', {})
+    current_list = st.session_state.get('comparison_list', [])
+    
+    for row_index, changes in edited_rows.items():
+        is_checked = changes.get('Confronta', None)
+        if is_checked is True and row_index not in current_list:
+            current_list.append(row_index)
+        elif is_checked is False and row_index in current_list:
+            current_list.remove(row_index)
+    
+    st.session_state.comparison_list = sorted(current_list)
+
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🎯 Analizzatore Wheel")
@@ -67,20 +87,17 @@ for ticker, data in mock_data.items():
     underlying_price = data['underlying_price']
     hv_20 = data['hv_20']
     for option in data['options']:
-        # Aggiungo HV20 all'opzione per passarlo ai calcoli
         option['hv_20'] = hv_20
         metrics = calculate_metrics(option, underlying_price, k_param)
         
-        # Filtro delta prima di calcolare tutto
         if abs(option['delta']) <= max_delta:
             row = {
                 'Ticker': ticker,
                 'Sottostante': f"${underlying_price:.2f}",
                 'HV20': f"{hv_20:.2%}",
-                **option, # Dati originali opzione
-                **metrics, # Metriche calcolate
+                **option,
+                **metrics,
             }
-            # Filtro Yield e DTE
             if row['Premium Yield %'] >= min_yield and row['DTE'] <= max_dte:
                  all_options.append(row)
 
@@ -88,8 +105,7 @@ if not all_options:
     st.warning("Nessuna opzione trovata con i filtri correnti. Prova ad allargare i criteri.")
     st.stop()
 
-df = pd.DataFrame(all_options)
-df = df.sort_values(by=sort_by, ascending=sort_ascending)
+df = pd.DataFrame(all_options).sort_values(by=sort_by, ascending=sort_ascending).reset_index(drop=True)
 
 # --- MAIN AREA ---
 st.title("Dashboard Opzioni PUT")
@@ -101,26 +117,28 @@ tab1, tab2, tab3 = st.tabs(["Panoramica 📈", "Analisi Dettagliata 🔬", "Conf
 with tab1:
     st.header("Panoramica Opzioni filtrate")
 
-    # Colonne essenziali per la tabella principale
     display_cols = ['Ticker', 'Strike', 'DTE', 'Premium', 'Premium Yield %', 'AS', 'POP %', 'Moneyness %']
-    df_display = df[display_cols].reset_index(drop=True)
-
-    # Aggiungi checkbox per confronto
+    df_display = df[display_cols].copy()
+    
     df_display.insert(0, 'Confronta', False)
+    # Ripristina lo stato delle checkbox dalla sessione
+    for index in st.session_state.comparison_list:
+        if index in df_display.index:
+            df_display.loc[index, 'Confronta'] = True
+
+    # CORREZIONE 2: Usa la nuova funzione di callback
     edited_df = st.data_editor(
         color_code_dataframe(df_display, ['Premium Yield %', 'AS', 'POP %']),
         hide_index=True,
         use_container_width=True,
         key="main_table",
-        on_change=lambda: st.session_state.update(
-            comparison_list=[i for i, row in st.session_state.main_table['edited_rows'].items() if row['Confronta']]
-        )
+        on_change=update_comparison_list 
     )
 
     st.info("💡 Clicca su una riga per vederne i dettagli nella tab 'Analisi Dettagliata'. Seleziona le checkbox per la tab 'Confronto'.")
     
-    # Logica per selezionare un'opzione per la vista dettagliata
-    if st.session_state.main_table and st.session_state.main_table['selection']['rows']:
+    # CORREZIONE 1: Logica di selezione più sicura
+    if 'selection' in st.session_state.main_table and st.session_state.main_table['selection']['rows']:
         selected_row_index = st.session_state.main_table['selection']['rows'][0]
         st.session_state.selected_option = df.iloc[selected_row_index]
 
@@ -134,7 +152,6 @@ with tab2:
         st.header(f"Analisi per {opt['Ticker']} - Strike ${opt['Strike']:.2f}")
         st.subheader(f"Scadenza: {opt['DTE']} giorni | Sottostante: ${float(opt['Sottostante'].replace('$', '')):.2f}")
 
-        # Sezione Metriche
         st.markdown("---")
         cols = st.columns(4)
         metric_items = {
@@ -157,7 +174,6 @@ with tab2:
                 </div>
                 """, unsafe_allow_html=True)
 
-        # Sezione Grafici e Rischio
         st.markdown("---")
         chart_col, risk_col = st.columns([2, 1])
 
@@ -186,28 +202,23 @@ with tab3:
         comparison_df = df.iloc[st.session_state.comparison_list]
         st.header("Confronto tra Opzioni Selezionate")
         
-        # Dati per il Radar Chart
         radar_data = []
         for i, row in comparison_df.iterrows():
-            # Inverti e normalizza AS (più alto è meglio)
             as_inverted_normalized = 1 - (row['AS'] / df['AS'].max())
-            
             radar_data.append({
-                'label': f"{row['Ticker']} ${row['Strike']}",
+                'label': f"{row['Ticker']} ${row['Strike']:.0f}",
                 'Premium Yield': row['Premium Yield %'],
                 'POP': row['POP %'],
-                'AS (Invertito)': as_inverted_normalized * 100 # Scala a 100
+                'AS (Invertito)': as_inverted_normalized * 100
             })
         
-        # Normalizzazione dati per radar chart
-        max_yield = max(d['Premium Yield'] for d in radar_data) if radar_data else 1
-        max_pop = max(d['POP'] for d in radar_data) if radar_data else 1
-        
-        for d in radar_data:
-            d['Premium Yield'] = (d['Premium Yield'] / max_yield) * 100
-            d['POP'] = (d['POP'] / max_pop) * 100
+        if radar_data:
+            max_yield = max(d['Premium Yield'] for d in radar_data) or 1
+            max_pop = max(d['POP'] for d in radar_data) or 1
+            for d in radar_data:
+                d['Premium Yield'] = (d['Premium Yield'] / max_yield) * 100
+                d['POP'] = (d['POP'] / max_pop) * 100
 
-        # Visualizzazioni
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Radar Chart Comparativo")
@@ -216,4 +227,4 @@ with tab3:
         with col2:
             st.subheader("Tabella di Confronto")
             display_cols_comp = ['Ticker', 'Strike', 'Premium Yield %', 'AS', 'POP %', 'Return on Risk %', 'Breakeven']
-            st.dataframe(comparison_df[display_cols_comp], use_container_width=True, hide_index=True)
+            st.dataframe(comparison_df[display_cols_comp].set_index('Ticker'), use_container_width=True)
