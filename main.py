@@ -38,12 +38,10 @@ def load_data(tickers):
     
     return generate_mock_data(tickers, price_map)
 
-# --- FUNZIONE DI CALLBACK CORRETTA ---
-# CORREZIONE 2: Funzione robusta per aggiornare la lista di confronto
+# --- FUNZIONE DI CALLBACK ---
 def update_comparison_list():
     """
     Aggiorna la lista di opzioni da confrontare in base alle checkbox spuntate.
-    Questa funzione gestisce correttamente aggiunte e rimozioni multiple.
     """
     edited_rows = st.session_state.main_table.get('edited_rows', {})
     current_list = st.session_state.get('comparison_list', [])
@@ -56,7 +54,6 @@ def update_comparison_list():
             current_list.remove(row_index)
     
     st.session_state.comparison_list = sorted(current_list)
-
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -121,26 +118,42 @@ with tab1:
     df_display = df[display_cols].copy()
     
     df_display.insert(0, 'Confronta', False)
-    # Ripristina lo stato delle checkbox dalla sessione
     for index in st.session_state.comparison_list:
         if index in df_display.index:
             df_display.loc[index, 'Confronta'] = True
 
-    # CORREZIONE 2: Usa la nuova funzione di callback
     edited_df = st.data_editor(
         color_code_dataframe(df_display, ['Premium Yield %', 'AS', 'POP %']),
         hide_index=True,
         use_container_width=True,
         key="main_table",
-        on_change=update_comparison_list 
+        on_change=update_comparison_list
     )
 
-    st.info("💡 Clicca su una riga per vederne i dettagli nella tab 'Analisi Dettagliata'. Seleziona le checkbox per la tab 'Confronto'.")
+    st.info("💡 **Per i dettagli**: Clicca su una riga O spunta la casella 'Confronta'.")
+
+    # --- NUOVA LOGICA DI SELEZIONE UNIFICATA ---
+    selected_index = None
+
+    # Caso 1: L'utente ha interagito con una checkbox.
+    edited_rows = st.session_state.main_table.get('edited_rows', {})
+    if edited_rows:
+        last_edited_index = list(edited_rows.keys())[-1]
+        # Se la casella è stata SPUNTATA, seleziona la riga per i dettagli.
+        if edited_rows[last_edited_index].get('Confronta') is True:
+            selected_index = last_edited_index
     
-    # CORREZIONE 1: Logica di selezione più sicura
+    # Caso 2: L'utente ha cliccato direttamente su una riga. Questa azione ha la priorità.
     if 'selection' in st.session_state.main_table and st.session_state.main_table['selection']['rows']:
-        selected_row_index = st.session_state.main_table['selection']['rows'][0]
-        st.session_state.selected_option = df.iloc[selected_row_index]
+        selected_index = st.session_state.main_table['selection']['rows'][0]
+
+    # Aggiorna l'opzione per la vista dettagliata se un indice è stato selezionato.
+    if selected_index is not None and selected_index < len(df):
+        st.session_state.selected_option = df.iloc[selected_index]
+    # Se l'ultima azione è stata deselezionare tutto, svuota i dettagli.
+    elif not st.session_state.comparison_list:
+        st.session_state.selected_option = None
+    # --- FINE LOGICA DI SELEZIONE ---
 
 
 # --- TAB 2: ANALISI DETTAGLIATA ---
