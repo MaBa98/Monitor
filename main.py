@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 
 # Importa moduli custom
-from src.data.yfinance_client import get_stock_data
-from src.data.mock_generator import generate_mock_data
+
+from src.data.real_options_client import get_real_options_data
 from src.core.calculations import calculate_metrics
 from src.ui.styling import apply_custom_styling
 from src.ui.charts import create_payoff_diagram, create_radar_chart
@@ -32,13 +32,7 @@ if 'comparison_list' not in st.session_state:
 # --- CARICAMENTO E CACHING DATI ---
 @st.cache_data(show_spinner="Caricamento dati di mercato...")
 def load_data(tickers):
-    price_map = {}
-    for ticker in tickers:
-        price, hv_20 = get_stock_data(ticker)
-        if price is not None and hv_20 is not None:
-            price_map[ticker] = {'price': price, 'hv_20': hv_20}
-    
-    return generate_mock_data(tickers, price_map)
+    return get_real_options_data(tickers, source='yahoo')
 
 # --- FUNZIONI DI CALLBACK ---
 def handle_details_selection():
