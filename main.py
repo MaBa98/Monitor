@@ -79,8 +79,34 @@ def update_table_state():
 with st.sidebar:
     st.title("🎯 Analizzatore Wheel")
     
-    available_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "SPY", "QQQ", "JPM", "V"]
-    selected_tickers = st.multiselect("Seleziona Tickers", available_tickers, default=["AAPL", "MSFT", "TSLA"])
+    ticker_mode = st.radio(
+        "Modalità selezione ticker:",
+        ["Lista predefinita", "Inserimento manuale"],
+        horizontal=True
+    )
+    
+    if ticker_mode == "Lista predefinita":
+        available_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "SPY", "QQQ", "JPM", "V"]
+        selected_tickers = st.multiselect("Seleziona Tickers", available_tickers, default=["AAPL", "MSFT", "TSLA"])
+    else:
+        # Input manuale
+        ticker_input = st.text_input(
+            "Inserisci ticker (separati da virgola):",
+            placeholder="es: AAPL, MSFT, TSLA",
+            help="Inserisci i simboli ticker separati da virgola"
+        )
+        
+        if ticker_input:
+            # Pulisci e valida input
+            selected_tickers = [ticker.strip().upper() for ticker in ticker_input.split(",") if ticker.strip()]
+            selected_tickers = list(dict.fromkeys(selected_tickers))  # Rimuovi duplicati
+            
+            if selected_tickers:
+                st.success(f"Ticker selezionati: {', '.join(selected_tickers)}")
+            else:
+                st.warning("Inserisci almeno un ticker valido")
+        else:
+            selected_tickers = []
 
     st.header("📊 Fonte Dati")
     data_source = st.radio(
