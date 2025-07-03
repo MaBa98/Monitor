@@ -94,7 +94,6 @@ class DataProvider:
     
     def _get_ib_options_data(self, tickers):
         """Ottiene dati da Interactive Brokers (fallback automatico a yfinance)"""
-        st.info("Tentativo connessione Interactive Brokers...")
         
         try:
             # Import dinamico per evitare errori all'avvio
@@ -113,14 +112,13 @@ class DataProvider:
             
             from src.data.ib_client import IBClient
             
-            # Test connessione IB
+            # Test connessione IB silenzioso
             ib_client = IBClient()
             if not ib_client.connect():
-                st.warning("IB non disponibile, uso yfinance")
+                # Fallback silenzioso senza warning
                 return self._get_real_options_data(tickers)
             
             ib_client.disconnect()
-            st.success("Connessione IB riuscita!")
             
             # Procedi con IB
             from src.data.ib_client import get_ib_stock_data, get_ib_options_data
