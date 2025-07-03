@@ -38,7 +38,8 @@ def get_options_data(ticker):
         # Ottieni le date di scadenza disponibili
         expiration_dates = stock.options
         if not expiration_dates:
-            return []
+            st.warning(f"Nessuna data di scadenza trovata per {ticker}")
+            return pd.DataFrame()
         
         all_puts = []
         
@@ -54,21 +55,31 @@ def get_options_data(ticker):
                 exp_datetime = pd.to_datetime(exp_date)
                 today = pd.Timestamp.now()
                 dte = (exp_datetime - today).days
-                
-                # Filtra solo PUT con volume > 0 e IV valida
+
+                # Filtro iniziale meno restrittivo: richiede solo IV e un minimo di interesse (volume O open interest)
                 puts = puts[
-                    (puts['volume'] > 0) & 
-                    (puts['impliedVolatility'] > 0) &
-                    (puts['bid'] > 0) &
-                    (puts['ask'] > 0)
+                    (puts['impliedVolatility'] > 0.001) &
+                    ((puts['volume'] > 0) | (puts['openInterest'] > 0))
                 ].copy()
+
+                if puts.empty:
+                    continue
+
+                # Calcolo del premium robusto: usa il mid-price se disponibile, altrimenti il lastPrice
+                puts['premium'] = np.where(
+                    (puts['bid'] > 0) & (puts['ask'] > 0),
+                    (puts['bid'] + puts['ask']) / 2,
+                    puts['lastPrice']
+                )
+
+                # Rimuovi opzioni con premium nullo o non calcolabile
+                puts = puts[puts['premium'] > 0].copy()
                 
                 if puts.empty:
                     continue
-                
+
                 # Aggiungi colonne calcolate
                 puts['dte'] = dte
-                puts['premium'] = (puts['bid'] + puts['ask']) / 2
                 puts['iv'] = puts['impliedVolatility']
                 puts['open_interest'] = puts['openInterest']
                 
@@ -87,8 +98,8 @@ def get_options_data(ticker):
                 
                 all_puts.append(puts_filtered)
                 
-            except Exception as e:
-                st.warning(f"Errore nel caricamento opzioni per {ticker} scadenza {exp_date}: {e}")
+            except Exception:
+                # Salta la singola scadenza in caso di errore senza bloccare tutto
                 continue
         
         if all_puts:
