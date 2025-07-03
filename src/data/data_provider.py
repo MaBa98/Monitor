@@ -95,6 +95,20 @@ class DataProvider:
     def _get_ib_options_data(self, tickers):
         """Ottiene dati da Interactive Brokers (fallback a yfinance)"""
         try:
+            # Import dinamico per evitare errori all'avvio
+            import asyncio
+            import nest_asyncio
+            
+            # Configura event loop per Streamlit
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Applica nest_asyncio per permettere nested event loops
+            nest_asyncio.apply()
+            
             from src.data.ib_client import get_ib_stock_data, get_ib_options_data
             
             options_data = {}
@@ -149,8 +163,11 @@ class DataProvider:
             
             return options_data
             
-        except ImportError:
-            st.warning("Interactive Brokers non disponibile, uso yfinance")
+        except ImportError as e:
+            st.warning(f"Interactive Brokers non disponibile ({e}), uso yfinance")
+            return self._get_real_options_data(tickers)
+        except Exception as e:
+            st.error(f"Errore configurazione IB: {e}")
             return self._get_real_options_data(tickers)
     
     def _get_mock_options_data(self, tickers):
