@@ -1,8 +1,21 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-from ib_insync import IB, Stock, Option
+import asyncio
+import nest_asyncio
 from datetime import datetime, timedelta
+
+# Configura event loop per Streamlit
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+# Applica nest_asyncio per permettere nested event loops
+nest_asyncio.apply()
+
+from ib_insync import IB, Stock, Option
 
 class IBClient:
     def __init__(self):
