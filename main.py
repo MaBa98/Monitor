@@ -114,10 +114,14 @@ with st.sidebar:
     st.header("📊 Fonte Dati")
     data_source = st.radio(
         "Scegli fonte dati:",
-        options=['real', 'mock'],
-        format_func=lambda x: 'Dati Reali (yfinance)' if x == 'real' else 'Dati Simulati (Mock)',
+        options=['real', 'ib', 'mock'],
+        format_func=lambda x: {
+            'real': 'Dati Reali (yfinance)',
+            'ib': 'Interactive Brokers',
+            'mock': 'Dati Simulati (Mock)'
+        }[x],
         index=0,
-        help="Dati Reali: usa le option chain di yfinance\nDati Simulati: usa dati generati per test"
+        help="Dati Reali: yfinance\nInteractive Brokers: IB API\nDati Simulati: test"
     )
     
     st.header("Filtri")
