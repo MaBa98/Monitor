@@ -10,6 +10,7 @@ from src.ui.styling import apply_custom_styling
 from src.ui.charts import create_payoff_diagram, create_radar_chart
 from src.utils.helpers import color_code_dataframe
 from src.data.data_provider import DataProvider
+from src.utils.ticker_search import render_ticker_search
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(
@@ -81,15 +82,15 @@ with st.sidebar:
     
     ticker_mode = st.radio(
         "Modalità selezione ticker:",
-        ["Lista predefinita", "Inserimento manuale"],
+        ["Lista predefinita", "Inserimento manuale", "Ricerca per nome"],
         horizontal=True
     )
     
     if ticker_mode == "Lista predefinita":
         available_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "SPY", "QQQ", "JPM", "V"]
         selected_tickers = st.multiselect("Seleziona Tickers", available_tickers, default=["AAPL", "MSFT", "TSLA"])
-    else:
-        # Input manuale
+    
+    elif ticker_mode == "Inserimento manuale":
         ticker_input = st.text_input(
             "Inserisci ticker (separati da virgola):",
             placeholder="es: AAPL, MSFT, TSLA",
@@ -97,9 +98,8 @@ with st.sidebar:
         )
         
         if ticker_input:
-            # Pulisci e valida input
             selected_tickers = [ticker.strip().upper() for ticker in ticker_input.split(",") if ticker.strip()]
-            selected_tickers = list(dict.fromkeys(selected_tickers))  # Rimuovi duplicati
+            selected_tickers = list(dict.fromkeys(selected_tickers))
             
             if selected_tickers:
                 st.success(f"Ticker selezionati: {', '.join(selected_tickers)}")
@@ -107,6 +107,9 @@ with st.sidebar:
                 st.warning("Inserisci almeno un ticker valido")
         else:
             selected_tickers = []
+    
+    else:  # Ricerca per nome
+        selected_tickers = render_ticker_search()
 
     st.header("📊 Fonte Dati")
     data_source = st.radio(
