@@ -93,7 +93,9 @@ class DataProvider:
         return options_data
     
     def _get_ib_options_data(self, tickers):
-        """Ottiene dati da Interactive Brokers (fallback a yfinance)"""
+        """Ottiene dati da Interactive Brokers (fallback automatico a yfinance)"""
+        st.info("Tentativo connessione Interactive Brokers...")
+        
         try:
             # Import dinamico per evitare errori all'avvio
             import asyncio
@@ -109,6 +111,18 @@ class DataProvider:
             # Applica nest_asyncio per permettere nested event loops
             nest_asyncio.apply()
             
+            from src.data.ib_client import IBClient
+            
+            # Test connessione IB
+            ib_client = IBClient()
+            if not ib_client.connect():
+                st.warning("IB non disponibile, uso yfinance")
+                return self._get_real_options_data(tickers)
+            
+            ib_client.disconnect()
+            st.success("Connessione IB riuscita!")
+            
+            # Procedi con IB
             from src.data.ib_client import get_ib_stock_data, get_ib_options_data
             
             options_data = {}
@@ -117,14 +131,14 @@ class DataProvider:
                 try:
                     underlying_price, hv_20 = get_ib_stock_data(ticker)
                     if underlying_price is None or hv_20 is None:
-                        st.warning(f"Impossibile ottenere dati IB per {ticker}, uso yfinance")
+                        st.warning(f"Dati IB non disponibili per {ticker}, uso yfinance")
                         underlying_price, hv_20 = get_stock_data(ticker)
                         if underlying_price is None or hv_20 is None:
                             continue
                     
                     options_df = get_ib_options_data(ticker)
                     if options_df.empty:
-                        st.warning(f"Nessuna opzione PUT IB per {ticker}, uso yfinance")
+                        st.warning(f"Opzioni IB non disponibili per {ticker}, uso yfinance")
                         options_df = get_options_data(ticker)
                         if options_df.empty:
                             continue
@@ -158,16 +172,51 @@ class DataProvider:
                     }
                     
                 except Exception as e:
-                    st.error(f"Errore IB per {ticker}: {e}")
-                    continue
+                    st.warning(f"Errore IB per {ticker}: {e}, uso yfinance")
+                    # Fallback per singolo ticker
+                    underlying_price, hv_20 = get_stock_data(ticker)
+                    if underlying_price is None or hv_20 is None:
+                        continue
+                    
+                    options_df = get_options_data(ticker)
+                    if options_df.empty:
+                        continue
+                    
+                    options_list = []
+                    for _, row in options_df.iterrows():
+                        greeks = calculate_greeks_approximation(
+                            row['strike'], underlying_price, row['iv'], row['dte']
+                        )
+                        
+                        option_dict = {
+                            'strike': row['strike'],
+                            'premium': row['premium'],
+                            'iv': row['iv'],
+                            'delta': greeks['delta'],
+                            'gamma': greeks['gamma'],
+                            'theta': greeks['theta'],
+                            'volume': row['volume'],
+                            'open_interest': row['open_interest'],
+                            'dte': row['dte'],
+                            'bid': row['bid'],
+                            'ask': row['ask'],
+                            'last': row['last']
+                        }
+                        options_list.append(option_dict)
+                    
+                    options_data[ticker] = {
+                        'underlying_price': underlying_price,
+                        'hv_20': hv_20,
+                        'options': options_list
+                    }
             
             return options_data
             
         except ImportError as e:
-            st.warning(f"Interactive Brokers non disponibile ({e}), uso yfinance")
+            st.warning(f"Libreria IB non disponibile: {e}")
             return self._get_real_options_data(tickers)
         except Exception as e:
-            st.error(f"Errore configurazione IB: {e}")
+            st.warning(f"Errore IB generale: {e}")
             return self._get_real_options_data(tickers)
     
     def _get_mock_options_data(self, tickers):
