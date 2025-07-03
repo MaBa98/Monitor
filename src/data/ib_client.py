@@ -28,8 +28,8 @@ class IBClient:
             self.ib.connect(host, port, clientId)
             self.connected = True
             return True
-        except Exception as e:
-            st.error(f"Errore connessione IB: {e}")
+        except Exception:
+            # Connessione fallita silenziosamente
             return False
     
     def disconnect(self):
